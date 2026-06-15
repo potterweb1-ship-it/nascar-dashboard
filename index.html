@@ -323,6 +323,12 @@
         <div class="chart-wrap"><canvas id="trend-chart"></canvas></div>
         <div class="legend-row" id="trend-legend"></div>
       </div>
+
+      <p class="section-label">Point differential by week</p>
+      <div class="chart-card">
+        <div class="chart-wrap"><canvas id="diff-chart"></canvas></div>
+        <div class="legend-row" id="diff-legend"></div>
+      </div>
     </section>
 
     <!-- STATS PAGE -->
@@ -349,14 +355,6 @@
         </table>
       </div>
 
-      <p class="section-label">Win / loss record</p>
-      <div class="table-card">
-        <table>
-          <thead><tr><th>Player</th><th class="num">W</th><th class="num">L</th><th class="num">Win %</th></tr></thead>
-          <tbody id="winloss-body"></tbody>
-        </table>
-      </div>
-
       <p class="section-label">Consistency</p>
       <div class="table-card">
         <table>
@@ -365,7 +363,7 @@
         </table>
       </div>
 
-      <p class="section-label">Points</p>
+      <p class="section-label">Stage points</p>
       <div class="table-card">
         <table>
           <thead><tr><th>Player</th><th class="num">Total</th><th class="num">Stage</th><th class="num">Stage %</th></tr></thead>
@@ -405,8 +403,10 @@ let state = {
   mostPickedByPlayer: {} // { playerName: { driver, count } }
 };
 
-let trendChart = null;
+let trendChartRef = { chart: null };
+let diffChartRef = { chart: null };
 let hiddenPlayers = new Set();
+let hiddenDiffPlayers = new Set();
 let momentumSortDesc = true;
 
 /* ================= HELPERS ================= */
@@ -494,6 +494,7 @@ async function loadAll(){
     //  cols 23-28       = Point By Race
     //  cols 30-35       = Stage Points By Race
     const RUNNING_START = 2;
+    const DIFF_START = 9;
     const PICKS_START = 16;
     const PTS_BY_RACE_START = 23;
     const STAGE_BY_RACE_START = 30;
@@ -506,7 +507,8 @@ async function loadAll(){
 
     const tracks = [];
     const series = {};
-    PLAYER_NAMES.forEach(p => series[p] = []);
+    const diffSeries = {};
+    PLAYER_NAMES.forEach(p => { series[p] = []; diffSeries[p] = []; });
 
     const pickCounts = {};
     PLAYER_NAMES.forEach(p => pickCounts[p] = {});
@@ -517,6 +519,9 @@ async function loadAll(){
         const v = Number(row[RUNNING_START + i]);
         series[p].push(isNaN(v) ? null : v);
 
+        const dv = Number(row[DIFF_START + i]);
+        diffSeries[p].push(isNaN(dv) ? null : dv);
+
         const driver = row[PICKS_START + i];
         if(driver !== undefined && driver !== null && String(driver).trim().length > 0){
           const d = String(driver).trim();
@@ -524,7 +529,7 @@ async function loadAll(){
         }
       });
     });
-    state.trend = { tracks, series };
+    state.trend = { tracks, series, diffSeries };
 
     state.mostPickedByPlayer = {};
     PLAYER_NAMES.forEach(p => {
@@ -540,6 +545,7 @@ async function loadAll(){
     renderStandings();
     renderMomentumTable();
     renderTrendChart();
+    renderDiffChart();
     renderStatsPage();
 
     const now = new Date();
@@ -606,18 +612,18 @@ document.querySelector('[data-sort="momentum"]').addEventListener('click', () =>
 });
 
 /* ================= RENDER: TRENDS ================= */
-function renderTrendChart(){
-  const ctx = document.getElementById('trend-chart');
+function renderLineChart(chartRef, canvasId, legendId, seriesObj, hiddenSet, onToggle){
+  const ctx = document.getElementById(canvasId);
   const datasets = PLAYER_NAMES.map(name => ({
     label: name,
-    data: state.trend.series[name] || [],
+    data: seriesObj[name] || [],
     borderColor: PLAYER_COLORS[name],
     backgroundColor: PLAYER_COLORS[name],
     borderWidth: 2,
     pointRadius: 0,
     pointHoverRadius: 4,
     tension: 0.25,
-    hidden: hiddenPlayers.has(name)
+    hidden: hiddenSet.has(name)
   }));
 
   const config = {
@@ -639,23 +645,32 @@ function renderTrendChart(){
     }
   };
 
-  if(trendChart){ trendChart.data = config.data; trendChart.update(); }
-  else { trendChart = new Chart(ctx, config); }
+  if(chartRef.chart){ chartRef.chart.data = config.data; chartRef.chart.update(); }
+  else { chartRef.chart = new Chart(ctx, config); }
 
-  const legend = document.getElementById('trend-legend');
+  const legend = document.getElementById(legendId);
   legend.innerHTML = PLAYER_NAMES.map(name => `
-    <span class="legend-item ${hiddenPlayers.has(name) ? 'muted' : ''}" data-player="${name}">
+    <span class="legend-item ${hiddenSet.has(name) ? 'muted' : ''}" data-player="${name}">
       <span class="legend-dot" style="background:${PLAYER_COLORS[name]}"></span>${name}
     </span>`).join('');
 
   legend.querySelectorAll('.legend-item').forEach(item => {
     item.addEventListener('click', () => {
       const name = item.dataset.player;
-      if(hiddenPlayers.has(name)) hiddenPlayers.delete(name); else hiddenPlayers.add(name);
-      renderTrendChart();
+      if(hiddenSet.has(name)) hiddenSet.delete(name); else hiddenSet.add(name);
+      onToggle();
     });
   });
 }
+
+function renderTrendChart(){
+  renderLineChart(trendChartRef, 'trend-chart', 'trend-legend', state.trend.series, hiddenPlayers, renderTrendChart);
+}
+
+function renderDiffChart(){
+  renderLineChart(diffChartRef, 'diff-chart', 'diff-legend', state.trend.diffSeries, hiddenDiffPlayers, renderDiffChart);
+}
+
 
 /* ================= RENDER: STATS PAGE ================= */
 function renderStatsPage(){
@@ -705,15 +720,6 @@ function renderStatsPage(){
   ).join('');
 
   // Win/loss
-  const wlSorted = state.players.slice().sort((a,b) => b.winPct - a.winPct);
-  document.getElementById('winloss-body').innerHTML = wlSorted.map(p => `
-    <tr>
-      <td class="name-cell">${p.name}</td>
-      <td class="num pos">${p.wins}</td>
-      <td class="num neg">${p.losses}</td>
-      <td class="num">${pct1(p.winPct)}%</td>
-    </tr>`).join('');
-
   // Consistency (score = avg / std dev, higher = more consistent relative to output)
   const consistencySorted = state.players.slice().map(p => ({
     ...p,
@@ -727,15 +733,18 @@ function renderStatsPage(){
       <td class="num amber-text">${round2(p.score)}</td>
     </tr>`).join('');
 
-  // Points
+  // Stage points (stage % = stage points / total points * 100)
   const pointsSorted = state.players.slice().sort((a,b) => b.pts - a.pts);
-  document.getElementById('points-body').innerHTML = pointsSorted.map(p => `
+  document.getElementById('points-body').innerHTML = pointsSorted.map(p => {
+    const stagePct = p.pts > 0 ? (p.stagePts / p.pts * 100) : 0;
+    return `
     <tr>
       <td class="name-cell">${p.name}</td>
       <td class="num">${p.pts}</td>
       <td class="num">${p.stagePts}</td>
-      <td class="num">${pct1(p.stagePct)}%</td>
-    </tr>`).join('');
+      <td class="num">${round1(stagePct)}%</td>
+    </tr>`;
+  }).join('');
 }
 
 /* ================= NAVIGATION ================= */
@@ -744,7 +753,10 @@ function switchView(viewName){
   document.getElementById('view-' + viewName).classList.add('active');
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.view === viewName));
   window.scrollTo({ top: 0, behavior: 'instant' });
-  if(viewName === 'standings' && trendChart) trendChart.resize();
+  if(viewName === 'standings'){
+    if(trendChartRef.chart) trendChartRef.chart.resize();
+    if(diffChartRef.chart) diffChartRef.chart.resize();
+  }
 }
 
 document.querySelectorAll('.tab-btn').forEach(btn => {
