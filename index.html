@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Race Control — Fantasy NASCAR</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0b0c0e;
+    --surface: #15171a;
+    --surface-2: #1d2025;
+    --border: #2a2e35;
+    --text: #eceef0;
+    --text-secondary: #8d94a0;
+    --text-tertiary: #5b6068;
+    --accent: #e8332c;
+    --amber: #f4b13c;
+    --green: #3a9d6e;
+    --radius-md: 8px;
+    --radius-lg: 14px;
+    --font-display: 'Oswald', sans-serif;
+    --font-body: 'Inter', sans-serif;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body { margin: 0; }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app {
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    padding-bottom: 76px;
+    position: relative;
+  }
+
+  /* ---------- Header ---------- */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px 12px;
+  }
+
+  header .top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .brand .flag {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-md);
+    background: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 15px;
+    color: #1a0b0a;
+    flex-shrink: 0;
+  }
+
+  .brand h1 {
+    font-family: var(--font-display);
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    margin: 0;
+    text-transform: uppercase;
+    line-height: 1.1;
+  }
+
+  .brand .sub {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 2px;
+  }
+
+  #refresh-btn {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-secondary);
+    border-radius: var(--radius-md);
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  #refresh-btn:active { transform: scale(0.94); }
+  #refresh-btn.spinning i { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #status {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #status.error { color: var(--accent); }
+  #status.ok i { color: var(--green); }
+
+  /* ---------- Main views ---------- */
+  main { padding: 16px; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .section-label {
+    font-family: var(--font-display);
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-tertiary);
+    margin: 0 0 10px;
+  }
+
+  .section-label + .section-label { margin-top: 24px; }
+
+  /* ---------- Standings cards ---------- */
+  .row-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+
+  .card:active { transform: scale(0.99); }
+  .card.clickable:hover { border-color: var(--text-tertiary); }
+
+  .rank, .avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 600;
+    flex-shrink: 0;
+  }
+
+  .rank.gold { background: var(--amber); color: #2a1a02; }
+  .rank.silver { background: #c8ccd2; color: #1a1d22; }
+  .rank.bronze { background: #c97a44; color: #2a1505; }
+  .rank.plain { background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--border); }
+
+  .avatar { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+
+  .card .info { flex: 1; min-width: 0; }
+  .card .name { font-size: 15px; font-weight: 600; }
+  .card .meta { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+  .card .stat { text-align: right; flex-shrink: 0; }
+  .card .stat .pts { font-family: var(--font-display); font-size: 19px; font-weight: 600; line-height: 1.1; }
+  .card .stat .momentum {
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    justify-content: flex-end;
+    margin-top: 3px;
+  }
+  .momentum.up { color: var(--green); }
+  .momentum.down { color: var(--accent); }
+
+  .chevron { color: var(--text-tertiary); font-size: 18px; flex-shrink: 0; }
+
+  /* ---------- Trend chart ---------- */
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+
+  .chart-wrap { position: relative; height: 230px; }
+
+  .legend-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+  }
+  .legend-item.muted { opacity: 0.35; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ---------- Driver bars ---------- */
+  .bar-row { margin-bottom: 12px; }
+  .bar-row .label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 13px;
+    margin-bottom: 5px;
+  }
+  .bar-row .label-row .name { font-weight: 600; }
+  .bar-row .label-row .meta { color: var(--text-tertiary); font-size: 11px; }
+  .bar-track { background: var(--surface-2); border-radius: var(--radius-md); height: 8px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: var(--radius-md); }
+  .bar-fill.accent { background: var(--accent); }
+  .bar-fill.amber { background: var(--amber); }
+
+  .toggle-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 3px;
+  }
+  .toggle-row button {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 0;
+    border-radius: 6px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .toggle-row button.active { background: var(--surface-2); color: var(--text); }
+
+  /* ---------- This week ---------- */
+  .week-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .week-header .track-name {
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .week-header .track-index { font-size: 12px; color: var(--text-tertiary); }
+
+  /* ---------- Player profile ---------- */
+  .profile-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  .profile-header .avatar-lg {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--surface); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display); font-size: 20px; font-weight: 600;
+    flex-shrink: 0;
+  }
+  .profile-header h2 {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin: 0;
+  }
+  .profile-header .rank-tag { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+  .back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    padding: 0;
+    margin-bottom: 14px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .stat-tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 12px;
+  }
+  .stat-tile .label {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 4px;
+  }
+  .stat-tile .value {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 600;
+  }
+  .stat-tile .value.green { color: var(--green); }
+  .stat-tile .value.red { color: var(--accent); }
+  .stat-tile .value.amber { color: var(--amber); }
+
+  /* ---------- Empty / notes ---------- */
+  .empty {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 13px;
+    padding: 2.5rem 0;
+  }
+  .info-note {
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .info-note i { margin-top: 1px; flex-shrink: 0; color: var(--text-tertiary); }
+
+  /* ---------- Bottom nav ---------- */
+  nav.bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: 480px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex;
+    z-index: 20;
+  }
+  nav.bottom-nav button {
+    flex: 1;
+    border: none;
+    background: none;
+    color: var(--text-tertiary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 10px 0 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+  }
+  nav.bottom-nav button i { font-size: 20px; }
+  nav.bottom-nav button.active { color: var(--accent); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="top-row">
+      <div class="brand">
+        <div class="flag">P1</div>
+        <div>
+          <h1>Race control</h1>
+          <div class="sub">Fantasy NASCAR &middot; 2026</div>
+        </div>
+      </div>
+      <button id="refresh-btn" aria-label="Refresh data"><i class="ti ti-refresh" aria-hidden="true"></i></button>
+    </div>
+    <div id="status">Loading live data...</div>
+  </header>
+
+  <main>
+    <!-- STANDINGS -->
+    <section class="view active" id="view-standings">
+      <p class="section-label">Season standings</p>
+      <div class="row-list" id="standings-list"></div>
+      <div class="info-note"><i class="ti ti-info-circle"></i>Live from your Google Sheet. Tap a driver to open their profile.</div>
+    </section>
+
+    <!-- TRENDS -->
+    <section class="view" id="view-trends">
+      <p class="section-label">Points race</p>
+      <div class="chart-card">
+        <div class="chart-wrap"><canvas id="trend-chart"></canvas></div>
+        <div class="legend-row" id="trend-legend"></div>
+      </div>
+    </section>
+
+    <!-- THIS WEEK -->
+    <section class="view" id="view-week">
+      <div class="week-header">
+        <span class="track-name" id="week-track">—</span>
+        <span class="track-index" id="week-index"></span>
+      </div>
+      <div class="row-list" id="week-list"></div>
+    </section>
+
+    <!-- DRIVERS -->
+    <section class="view" id="view-drivers">
+      <div class="toggle-row">
+        <button id="driver-toggle-points" class="active">Total points</button>
+        <button id="driver-toggle-picked">Times picked</button>
+      </div>
+      <div id="driver-bars"></div>
+    </section>
+
+    <!-- PLAYER PROFILE -->
+    <section class="view" id="view-profile">
+      <button class="back-btn" id="profile-back"><i class="ti ti-chevron-left"></i> Standings</button>
+      <div class="profile-header">
+        <div class="avatar-lg" id="profile-avatar"></div>
+        <div>
+          <h2 id="profile-name">—</h2>
+          <div class="rank-tag" id="profile-rank"></div>
+        </div>
+      </div>
+      <div class="stat-grid" id="profile-stats"></div>
+      <p class="section-label">Season trend</p>
+      <div class="chart-card">
+        <div class="chart-wrap" style="height:180px;"><canvas id="profile-chart"></canvas></div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-view="standings"><i class="ti ti-trophy" aria-hidden="true"></i>Standings</button>
+    <button class="nav-btn" data-view="trends"><i class="ti ti-chart-line" aria-hidden="true"></i>Trends</button>
+    <button class="nav-btn" data-view="week"><i class="ti ti-flag-2" aria-hidden="true"></i>This week</button>
+    <button class="nav-btn" data-view="drivers"><i class="ti ti-steering-wheel" aria-hidden="true"></i>Drivers</button>
+  </nav>
+</div>
+
+<script>
+/* ================= CONFIG ================= */
+const URLS = {
+  data: "https://docs.google.com/spreadsheets/d/e/2PACX-1vR87iiA9C9saGmQDdOYukR9hZnsgu-Tx7nb4rJ3qg0SNJAyqbJrHdfTwZbPd_G6Dmi6C0Rr2ZkSqhFM/pub?gid=1241423050&single=true&output=csv",
+  dashboarddata: "https://docs.google.com/spreadsheets/d/e/2PACX-1vR87iiA9C9saGmQDdOYukR9hZnsgu-Tx7nb4rJ3qg0SNJAyqbJrHdfTwZbPd_G6Dmi6C0Rr2ZkSqhFM/pub?gid=1907197552&single=true&output=csv",
+  drivers: "https://docs.google.com/spreadsheets/d/e/2PACX-1vR87iiA9C9saGmQDdOYukR9hZnsgu-Tx7nb4rJ3qg0SNJAyqbJrHdfTwZbPd_G6Dmi6C0Rr2ZkSqhFM/pub?gid=1197252648&single=true&output=csv"
+};
+
+const PLAYER_NAMES = ["Will","Bo","Doug","Zp","Barth Jr","Barth Sr"];
+
+const PLAYER_COLORS = {
+  "Will":     "#e8332c",
+  "Bo":       "#f4b13c",
+  "Doug":     "#3a9d6e",
+  "Zp":       "#5b9bd5",
+  "Barth Jr": "#a47ee0",
+  "Barth Sr": "#e07ec0"
+};
+
+/* ================= STATE ================= */
+let state = {
+  players: [],        // [{name, pts, diff, momentum, wins, losses, avg, std, fav, favCount, diversity, stagePts, stagePct}]
+  drivers: [],         // [{name, picked, total, avg}]
+  trend: { tracks: [], series: {} }, // running totals per player per track
+  weekTrack: "Latest race",
+  weekPicks: []
+};
+
+let trendChart = null;
+let profileChart = null;
+let hiddenPlayers = new Set();
+
+/* ================= HELPERS ================= */
+function initials(n){ return n.split(" ").map(w=>w[0]).join("").toUpperCase(); }
+function bust(url){ const sep = url.includes("?") ? "&" : "?"; return url + sep + "cb=" + Date.now(); }
+function fetchCSV(url){
+  return fetch(bust(url), { cache: "no-store" }).then(r => {
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    return r.text();
+  }).then(text => Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true }).data);
+}
+function round1(n){ return Math.round((Number(n) || 0) * 10) / 10; }
+
+/* ================= DATA LOAD ================= */
+async function loadAll(){
+  const statusEl = document.getElementById('status');
+  const refreshBtn = document.getElementById('refresh-btn');
+  statusEl.className = "";
+  statusEl.innerHTML = '<i class="ti ti-loader-2"></i> Loading live data...';
+  refreshBtn.classList.add('spinning');
+
+  try {
+    const [dashRows, dataRows, driverRows] = await Promise.all([
+      fetchCSV(URLS.dashboarddata),
+      fetchCSV(URLS.data),
+      fetchCSV(URLS.drivers)
+    ]);
+
+    state.players = dashRows.filter(r => r.Player).map(r => ({
+      name: r.Player,
+      pts: Number(r["Total Points"]) || 0,
+      diff: Number(r["Current Points Differencial"] ?? r["Current Points Differential"] ?? 0),
+      momentum: Number(r.Momentum) || 0,
+      wins: Number(r.Wins) || 0,
+      losses: Number(r.Losses) || 0,
+      winPct: Number(r["Win %"]) || 0,
+      avg: Number(r.Ave) || 0,
+      std: Number(r["Std Dev"]) || 0,
+      fav: r["Favorite Driver"] || "—",
+      favCount: Number(r["Favorite Driver Count"]) || 0,
+      diversity: Number(r.Diversity) || 0,
+      stagePts: Number(r["Stage Points"]) || 0,
+      stagePct: Number(r["Stage %"]) || 0
+    })).sort((a,b) => b.pts - a.pts);
+
+    state.drivers = driverRows.filter(r => r.Driver).map(r => ({
+      name: r.Driver,
+      picked: Number(r["Times Picked"]) || 0,
+      total: Number(r["Total Points"]) || 0,
+      avg: Number(r["Avg Points"]) || 0
+    })).sort((a,b) => b.total - a.total);
+
+    // Build season trend (running totals) from the "data" sheet
+    const trackRows = dataRows.filter(r => r.TRACKS && String(r.TRACKS).trim().length > 0);
+    const keys = trackRows.length ? Object.keys(trackRows[0]) : [];
+    const tracks = [];
+    const series = {};
+    PLAYER_NAMES.forEach(p => series[p] = []);
+
+    trackRows.forEach(row => {
+      tracks.push(row.TRACKS);
+      PLAYER_NAMES.forEach((p, i) => {
+        const key = keys[1 + i]; // columns 1..6 are running totals for each player, in order
+        const v = Number(row[key]);
+        series[p].push(isNaN(v) ? null : v);
+      });
+    });
+    state.trend = { tracks, series };
+
+    // This week = last track row
+    const lastRow = trackRows[trackRows.length - 1];
+    state.weekPicks = [];
+    if(lastRow){
+      state.weekTrack = lastRow.TRACKS;
+      const picksStart = keys.indexOf("Picks");
+      const pointsStart = keys.indexOf("Point By Race");
+      const stageStart = keys.indexOf("Stage Points By Race");
+      PLAYER_NAMES.forEach((name, i) => {
+        const driver = picksStart >= 0 ? lastRow[keys[picksStart + 1 + i]] : "";
+        const pts = pointsStart >= 0 ? lastRow[keys[pointsStart + 1 + i]] : 0;
+        const stage = stageStart >= 0 ? lastRow[keys[stageStart + 1 + i]] : 0;
+        if(driver) state.weekPicks.push({ name, driver, pts: pts || 0, stage: stage || 0 });
+      });
+    }
+    state.weekIndex = tracks.length;
+
+    renderStandings();
+    renderTrendChart();
+    renderWeek();
+    renderDrivers();
+
+    const now = new Date();
+    statusEl.className = "ok";
+    statusEl.innerHTML = `<i class="ti ti-circle-check"></i> Updated ${now.toLocaleDateString()} ${now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+  } catch (err) {
+    statusEl.className = "error";
+    statusEl.innerHTML = `<i class="ti ti-alert-circle"></i> Could not load live data (${err.message})`;
+  } finally {
+    refreshBtn.classList.remove('spinning');
+  }
+}
+
+/* ================= RENDER: STANDINGS ================= */
+function renderStandings(){
+  const el = document.getElementById('standings-list');
+  if(!state.players.length){
+    el.innerHTML = '<div class="empty">No standings data found.</div>';
+    return;
+  }
+  const rankClasses = ["gold","silver","bronze"];
+  el.innerHTML = state.players.map((p, i) => {
+    const rankClass = i < 3 ? rankClasses[i] : "plain";
+    const diffStr = p.diff === 0 ? "Leader" : (p.diff > 0 ? "+" : "") + p.diff + " pts";
+    const momIcon = p.momentum >= 0 ? "ti-trending-up" : "ti-trending-down";
+    const momClass = p.momentum >= 0 ? "up" : "down";
+    return `
+    <div class="card clickable" data-player="${p.name}">
+      <div class="rank ${rankClass}">${i+1}</div>
+      <div class="info">
+        <div class="name">${p.name}</div>
+        <div class="meta">${diffStr}</div>
+      </div>
+      <div class="stat">
+        <div class="pts">${p.pts}</div>
+        <div class="momentum ${momClass}"><i class="ti ${momIcon}" aria-hidden="true"></i>${Math.abs(round1(p.momentum))}</div>
+      </div>
+      <i class="ti ti-chevron-right chevron" aria-hidden="true"></i>
+    </div>`;
+  }).join('');
+
+  el.querySelectorAll('.card').forEach(card => {
+    card.addEventListener('click', () => openProfile(card.dataset.player));
+  });
+}
+
+/* ================= RENDER: TRENDS ================= */
+function renderTrendChart(){
+  const ctx = document.getElementById('trend-chart');
+  const datasets = PLAYER_NAMES.map(name => ({
+    label: name,
+    data: state.trend.series[name] || [],
+    borderColor: PLAYER_COLORS[name],
+    backgroundColor: PLAYER_COLORS[name],
+    borderWidth: 2,
+    pointRadius: 0,
+    pointHoverRadius: 4,
+    tension: 0.25,
+    hidden: hiddenPlayers.has(name)
+  }));
+
+  const config = {
+    type: 'line',
+    data: { labels: state.trend.tracks, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: {
+        backgroundColor: '#1d2025', borderColor: '#2a2e35', borderWidth: 1,
+        titleColor: '#eceef0', bodyColor: '#eceef0', padding: 10, titleFont: { family: 'Inter', size: 11 }, bodyFont: { family: 'Inter', size: 11 }
+      }},
+      scales: {
+        x: { grid: { color: '#2a2e35' }, ticks: { color: '#8d94a0', font: { family: 'Inter', size: 10 }, maxRotation: 0, autoSkip: true } },
+        y: { grid: { color: '#2a2e35' }, ticks: { color: '#8d94a0', font: { family: 'Inter', size: 10 } } }
+      }
+    }
+  };
+
+  if(trendChart){ trendChart.data = config.data; trendChart.update(); }
+  else { trendChart = new Chart(ctx, config); }
+
+  const legend = document.getElementById('trend-legend');
+  legend.innerHTML = PLAYER_NAMES.map(name => `
+    <span class="legend-item ${hiddenPlayers.has(name) ? 'muted' : ''}" data-player="${name}">
+      <span class="legend-dot" style="background:${PLAYER_COLORS[name]}"></span>${name}
+    </span>`).join('');
+
+  legend.querySelectorAll('.legend-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const name = item.dataset.player;
+      if(hiddenPlayers.has(name)) hiddenPlayers.delete(name); else hiddenPlayers.add(name);
+      renderTrendChart();
+    });
+  });
+}
+
+/* ================= RENDER: THIS WEEK ================= */
+function renderWeek(){
+  document.getElementById('week-track').textContent = state.weekTrack;
+  document.getElementById('week-index').textContent = state.weekIndex ? `Race ${state.weekIndex} of season` : '';
+  const el = document.getElementById('week-list');
+  if(!state.weekPicks.length){
+    el.innerHTML = '<div class="empty">No race data found.</div>';
+    return;
+  }
+  el.innerHTML = state.weekPicks.slice().sort((a,b) => b.pts - a.pts).map(p => `
+    <div class="card">
+      <div class="avatar">${initials(p.name)}</div>
+      <div class="info">
+        <div class="name">${p.name}</div>
+        <div class="meta">Picked ${p.driver}</div>
+      </div>
+      <div class="stat">
+        <div class="pts">${p.pts}</div>
+        ${p.stage > 0 ? `<div class="meta">+${p.stage} stage</div>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+/* ================= RENDER: DRIVERS ================= */
+let driverSortMode = 'points'; // 'points' | 'picked'
+function renderDrivers(){
+  const el = document.getElementById('driver-bars');
+  if(!state.drivers.length){
+    el.innerHTML = '<div class="empty">No driver data found.</div>';
+    return;
+  }
+  const sorted = state.drivers.slice().sort((a,b) =>
+    driverSortMode === 'points' ? b.total - a.total : b.picked - a.picked
+  );
+  const max = Math.max(...sorted.map(d => driverSortMode === 'points' ? d.total : d.picked));
+  el.innerHTML = `<p class="section-label">${driverSortMode === 'points' ? 'Total fantasy points' : 'Times drafted this season'}</p>` +
+    sorted.map(d => {
+      const val = driverSortMode === 'points' ? d.total : d.picked;
+      const pct = max > 0 ? (val / max * 100) : 0;
+      const fillClass = driverSortMode === 'points' ? 'accent' : 'amber';
+      return `
+      <div class="bar-row">
+        <div class="label-row">
+          <span class="name">${d.name}</span>
+          <span class="meta">${d.total} pts &middot; picked ${d.picked}x &middot; avg ${round1(d.avg)}</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill ${fillClass}" style="width:${pct}%"></div></div>
+      </div>`;
+    }).join('');
+}
+
+document.getElementById('driver-toggle-points').addEventListener('click', () => {
+  driverSortMode = 'points';
+  document.getElementById('driver-toggle-points').classList.add('active');
+  document.getElementById('driver-toggle-picked').classList.remove('active');
+  renderDrivers();
+});
+document.getElementById('driver-toggle-picked').addEventListener('click', () => {
+  driverSortMode = 'picked';
+  document.getElementById('driver-toggle-picked').classList.add('active');
+  document.getElementById('driver-toggle-points').classList.remove('active');
+  renderDrivers();
+});
+
+/* ================= RENDER: PLAYER PROFILE ================= */
+function openProfile(name){
+  const p = state.players.find(pl => pl.name === name);
+  if(!p) return;
+  const rankIdx = state.players.findIndex(pl => pl.name === name);
+
+  document.getElementById('profile-avatar').textContent = initials(name);
+  document.getElementById('profile-name').textContent = name;
+  document.getElementById('profile-rank').textContent = `#${rankIdx + 1} overall \u00b7 ${p.pts} pts`;
+
+  const winPctDisplay = Math.round((p.winPct || 0) * 100);
+  const stagePctDisplay = (p.stagePct * 100).toFixed(1);
+
+  document.getElementById('profile-stats').innerHTML = `
+    <div class="stat-tile">
+      <div class="label">Record</div>
+      <div class="value">${p.wins}-${p.losses}</div>
+    </div>
+    <div class="stat-tile">
+      <div class="label">Win rate</div>
+      <div class="value ${winPctDisplay >= 50 ? 'green' : 'red'}">${winPctDisplay}%</div>
+    </div>
+    <div class="stat-tile">
+      <div class="label">Avg points / race</div>
+      <div class="value">${round1(p.avg)}</div>
+    </div>
+    <div class="stat-tile">
+      <div class="label">Consistency (std dev)</div>
+      <div class="value">${round1(p.std)}</div>
+    </div>
+    <div class="stat-tile">
+      <div class="label">Favorite driver</div>
+      <div class="value amber" style="font-size:16px;">${p.fav}</div>
+    </div>
+    <div class="stat-tile">
+      <div class="label">Driver diversity</div>
+      <div class="value">${p.diversity}</div>
+    </div>
+    <div class="stat-tile">
+      <div class="label">Stage points</div>
+      <div class="value">${p.stagePts}</div>
+    </div>
+    <div class="stat-tile">
+      <div class="label">Momentum</div>
+      <div class="value ${p.momentum >= 0 ? 'green' : 'red'}">${p.momentum >= 0 ? '+' : ''}${round1(p.momentum)}</div>
+    </div>
+  `;
+
+  const ctx = document.getElementById('profile-chart');
+  const data = state.trend.series[name] || [];
+  const config = {
+    type: 'line',
+    data: {
+      labels: state.trend.tracks,
+      datasets: [{
+        label: name,
+        data,
+        borderColor: PLAYER_COLORS[name],
+        backgroundColor: PLAYER_COLORS[name] + '22',
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        tension: 0.25,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: {
+        backgroundColor: '#1d2025', borderColor: '#2a2e35', borderWidth: 1,
+        titleColor: '#eceef0', bodyColor: '#eceef0', padding: 10, titleFont: { family: 'Inter', size: 11 }, bodyFont: { family: 'Inter', size: 11 }
+      }},
+      scales: {
+        x: { grid: { color: '#2a2e35' }, ticks: { color: '#8d94a0', font: { family: 'Inter', size: 10 }, maxRotation: 0, autoSkip: true } },
+        y: { grid: { color: '#2a2e35' }, ticks: { color: '#8d94a0', font: { family: 'Inter', size: 10 } } }
+      }
+    }
+  };
+  if(profileChart) profileChart.destroy();
+  profileChart = new Chart(ctx, config);
+
+  switchView('profile');
+}
+
+document.getElementById('profile-back').addEventListener('click', () => switchView('standings'));
+
+/* ================= NAVIGATION ================= */
+function switchView(viewName){
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + viewName).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === viewName));
+  window.scrollTo({ top: 0, behavior: 'instant' });
+  if(viewName === 'trends' && trendChart) trendChart.resize();
+}
+
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchView(btn.dataset.view));
+});
+
+document.getElementById('refresh-btn').addEventListener('click', loadAll);
+
+/* ================= INIT ================= */
+loadAll();
+setInterval(loadAll, 5 * 60 * 1000);
+</script>
+</body>
+</html>
