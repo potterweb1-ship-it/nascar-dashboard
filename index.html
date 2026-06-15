@@ -411,15 +411,40 @@ let momentumSortDesc = true;
 
 /* ================= HELPERS ================= */
 function bust(url){ const sep = url.includes("?") ? "&" : "?"; return url + sep + "cb=" + Date.now(); }
+
+// Returns array-of-objects (header:true) parsing
 function fetchCSV(url){
   return fetch(bust(url), { cache: "no-store" }).then(r => {
     if(!r.ok) throw new Error("HTTP " + r.status);
     return r.text();
   }).then(text => Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true }).data);
 }
+
+// Returns array-of-arrays (raw rows, no header interpretation) - used for the
+// "data" sheet, which has multi-row/merged headers that break header:true parsing.
+function fetchCSVRaw(url){
+  return fetch(bust(url), { cache: "no-store" }).then(r => {
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    return r.text();
+  }).then(text => Papa.parse(text, { header: false, skipEmptyLines: false, dynamicTyping: true }).data);
+}
+
+// Find a value in an object by trying several possible key spellings
+function pick(obj, ...keys){
+  for(const k of keys){
+    if(obj[k] !== undefined && obj[k] !== null && obj[k] !== "") return obj[k];
+  }
+  return undefined;
+}
+
 function round1(n){ return Math.round((Number(n) || 0) * 10) / 10; }
 function round2(n){ return Math.round((Number(n) || 0) * 100) / 100; }
-function pct1(n){ return (Number(n) * 100).toFixed(1); }
+function pct1(n){
+  let v = Number(n);
+  if(isNaN(v)) return "0.0";
+  if(v <= 1) v = v * 100;
+  return v.toFixed(1);
+}
 
 /* ================= DATA LOAD ================= */
 async function loadAll(){
@@ -430,27 +455,27 @@ async function loadAll(){
   refreshBtn.classList.add('spinning');
 
   try {
-    const [dashRows, dataRows, driverRows] = await Promise.all([
+    const [dashRows, dataRowsRaw, driverRows] = await Promise.all([
       fetchCSV(URLS.dashboarddata),
-      fetchCSV(URLS.data),
+      fetchCSVRaw(URLS.data),
       fetchCSV(URLS.drivers)
     ]);
 
     state.players = dashRows.filter(r => r.Player).map(r => ({
       name: r.Player,
-      pts: Number(r["Total Points"]) || 0,
-      diff: Number(r["Current Points Differencial"] ?? r["Current Points Differential"] ?? 0),
-      momentum: Number(r.Momentum) || 0,
-      wins: Number(r.Wins) || 0,
-      losses: Number(r.Losses) || 0,
-      winPct: Number(r["Win %"]) || 0,
-      avg: Number(r.Ave) || 0,
-      std: Number(r["Std Dev"]) || 0,
-      fav: r["Favorite Driver"] || "—",
-      favCount: Number(r["Favorite Driver Count"]) || 0,
-      diversity: Number(r.Diversity) || 0,
-      stagePts: Number(r["Stage Points"]) || 0,
-      stagePct: Number(r["Stage %"]) || 0
+      pts: Number(pick(r, "Total Points")) || 0,
+      diff: Number(pick(r, "Current Points Differencial", "Current Points Differential", "Current Points Diff")) || 0,
+      momentum: Number(pick(r, "Momentum")) || 0,
+      wins: Number(pick(r, "Wins")) || 0,
+      losses: Number(pick(r, "Losses")) || 0,
+      winPct: Number(pick(r, "Win %", "Win%", "Win Percent")) || 0,
+      avg: Number(pick(r, "Ave", "Avg", "Average")) || 0,
+      std: Number(pick(r, "Std Dev", "Standard Dev", "StdDev")) || 0,
+      fav: pick(r, "Favorite Driver", "Favourite Driver") || "—",
+      favCount: Number(pick(r, "Favorite Driver Count", "Favourite Driver Count")) || 0,
+      diversity: Number(pick(r, "Diversity")) || 0,
+      stagePts: Number(pick(r, "Stage Points")) || 0,
+      stagePct: Number(pick(r, "Stage %", "Stage%", "Stage Percent")) || 0
     })).sort((a,b) => b.pts - a.pts);
 
     state.drivers = driverRows.filter(r => r.Driver).map(r => ({
@@ -460,30 +485,42 @@ async function loadAll(){
       avg: Number(r["Avg Points"]) || 0
     })).sort((a,b) => b.total - a.total);
 
-    // Build season trend (running totals) + most-picked-by-player from "data" sheet
-    const trackRows = dataRows.filter(r => r.TRACKS && String(r.TRACKS).trim().length > 0);
-    const keys = trackRows.length ? Object.keys(trackRows[0]) : [];
+    // ---- Parse the "data" sheet using raw positional rows ----
+    // Sheet layout (0-indexed columns):
+    //  col 1            = TRACKS
+    //  cols 2-7         = Running Total (Will, Bo, Doug, Zp, Barth Jr, Barth Sr)
+    //  cols 9-14        = Running Point Difference
+    //  cols 16-21       = Picks
+    //  cols 23-28       = Point By Race
+    //  cols 30-35       = Stage Points By Race
+    const RUNNING_START = 2;
+    const PICKS_START = 16;
+    const PTS_BY_RACE_START = 23;
+    const STAGE_BY_RACE_START = 30;
+
+    // Find the header row (the row containing "TRACKS" in column 1)
+    let headerRowIdx = dataRowsRaw.findIndex(row => row && String(row[1]).trim().toUpperCase() === "TRACKS");
+    const trackRowsRaw = headerRowIdx >= 0
+      ? dataRowsRaw.slice(headerRowIdx + 1).filter(row => row && row[1] && String(row[1]).trim().length > 0)
+      : [];
+
     const tracks = [];
     const series = {};
     PLAYER_NAMES.forEach(p => series[p] = []);
 
-    const picksStart = keys.indexOf("Picks");
     const pickCounts = {};
     PLAYER_NAMES.forEach(p => pickCounts[p] = {});
 
-    trackRows.forEach(row => {
-      tracks.push(row.TRACKS);
+    trackRowsRaw.forEach(row => {
+      tracks.push(String(row[1]).trim());
       PLAYER_NAMES.forEach((p, i) => {
-        const key = keys[1 + i];
-        const v = Number(row[key]);
+        const v = Number(row[RUNNING_START + i]);
         series[p].push(isNaN(v) ? null : v);
 
-        if(picksStart >= 0){
-          const driver = row[keys[picksStart + 1 + i]];
-          if(driver && String(driver).trim().length > 0){
-            const d = String(driver).trim();
-            pickCounts[p][d] = (pickCounts[p][d] || 0) + 1;
-          }
+        const driver = row[PICKS_START + i];
+        if(driver !== undefined && driver !== null && String(driver).trim().length > 0){
+          const d = String(driver).trim();
+          pickCounts[p][d] = (pickCounts[p][d] || 0) + 1;
         }
       });
     });
