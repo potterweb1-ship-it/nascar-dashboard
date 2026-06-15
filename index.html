@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Race Control — Fantasy NASCAR</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0b0c0e;
+    --surface: #15171a;
+    --surface-2: #1d2025;
+    --border: #2a2e35;
+    --text: #eceef0;
+    --text-secondary: #8d94a0;
+    --text-tertiary: #5b6068;
+    --accent: #e8332c;
+    --amber: #f4b13c;
+    --green: #3a9d6e;
+    --radius-md: 8px;
+    --radius-lg: 14px;
+    --font-display: 'Oswald', sans-serif;
+    --font-body: 'Inter', sans-serif;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app {
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    position: relative;
+  }
+
+  /* ---------- Header ---------- */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px 0;
+  }
+
+  header .top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .brand { display: flex; align-items: center; gap: 10px; }
+
+  .brand .flag {
+    width: 34px; height: 34px;
+    border-radius: var(--radius-md);
+    background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display);
+    font-weight: 700; font-size: 15px; color: #1a0b0a;
+    flex-shrink: 0;
+  }
+
+  .brand h1 {
+    font-family: var(--font-display);
+    font-size: 19px; font-weight: 600;
+    letter-spacing: 0.03em; margin: 0;
+    text-transform: uppercase; line-height: 1.1;
+  }
+
+  .brand .sub {
+    font-size: 11px; color: var(--text-tertiary);
+    text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px;
+  }
+
+  #refresh-btn {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-secondary);
+    border-radius: var(--radius-md);
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; cursor: pointer; flex-shrink: 0;
+  }
+  #refresh-btn:active { transform: scale(0.94); }
+  #refresh-btn.spinning i { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #status {
+    font-size: 11px; color: var(--text-tertiary);
+    margin-bottom: 12px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  #status.error { color: var(--accent); }
+  #status.ok i { color: var(--green); }
+
+  nav.tabs { display: flex; gap: 4px; }
+  nav.tabs button {
+    flex: 1; border: none; background: transparent;
+    color: var(--text-tertiary);
+    font-family: var(--font-display);
+    font-size: 13px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 10px 0;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+  }
+  nav.tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
+
+  /* ---------- Main ---------- */
+  main { padding: 16px; }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .section-label {
+    font-family: var(--font-display);
+    font-size: 12px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--text-tertiary);
+    margin: 0 0 10px;
+  }
+  .section-label + .section-label,
+  .chart-card + .section-label,
+  .row-list + .section-label,
+  .table-card + .section-label,
+  .stat-grid + .section-label { margin-top: 24px; }
+
+  /* ---------- Standings cards ---------- */
+  .row-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .card {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 12px 14px;
+  }
+
+  .rank {
+    width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display); font-size: 13px; font-weight: 600;
+    flex-shrink: 0;
+  }
+  .rank.gold { background: var(--amber); color: #2a1a02; }
+  .rank.silver { background: #c8ccd2; color: #1a1d22; }
+  .rank.bronze { background: #c97a44; color: #2a1505; }
+  .rank.plain { background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--border); }
+
+  .card .info { flex: 1; min-width: 0; }
+  .card .name { font-size: 15px; font-weight: 600; }
+  .card .meta { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+  .card .stat { text-align: right; flex-shrink: 0; }
+  .card .stat .pts { font-family: var(--font-display); font-size: 19px; font-weight: 600; line-height: 1.1; }
+  .card .stat .momentum {
+    font-size: 11px; display: flex; align-items: center; gap: 2px;
+    justify-content: flex-end; margin-top: 3px;
+    color: var(--text-secondary);
+  }
+
+  /* ---------- Tables ---------- */
+  .table-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 13px; }
+  th, td {
+    padding: 9px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  th {
+    font-family: var(--font-display);
+    font-size: 11px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+    background: var(--surface-2);
+  }
+  tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; font-family: var(--font-display); }
+  td.name-cell { font-weight: 600; }
+  .pos { color: var(--green); }
+  .neg { color: var(--accent); }
+  .amber-text { color: var(--amber); }
+
+  .sortable { cursor: pointer; user-select: none; }
+  .sortable .arrow { font-size: 9px; margin-left: 2px; opacity: 0.6; }
+
+  /* ---------- Trend chart ---------- */
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 14px;
+    margin-bottom: 12px;
+  }
+  .chart-wrap { position: relative; height: 230px; }
+  .legend-row {
+    display: flex; flex-wrap: wrap; gap: 8px 14px;
+    margin-top: 12px; padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--text-secondary);
+    cursor: pointer; user-select: none;
+  }
+  .legend-item.muted { opacity: 0.35; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ---------- Bar rows (driver value) ---------- */
+  .bar-row { margin-bottom: 12px; }
+  .bar-row .label-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 13px; margin-bottom: 5px;
+  }
+  .bar-row .label-row .name { font-weight: 600; }
+  .bar-row .label-row .meta { color: var(--text-tertiary); font-size: 11px; }
+  .bar-track { background: var(--surface-2); border-radius: var(--radius-md); height: 8px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: var(--radius-md); background: var(--accent); }
+
+  /* ---------- Most picked by player ---------- */
+  .picks-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .pick-tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+  }
+  .pick-tile .player-name {
+    font-size: 11px; color: var(--text-tertiary);
+    text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;
+  }
+  .pick-tile .driver-name {
+    font-family: var(--font-display);
+    font-size: 16px; font-weight: 600;
+  }
+  .pick-tile .count { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+  .empty {
+    text-align: center; color: var(--text-secondary);
+    font-size: 13px; padding: 2.5rem 0;
+  }
+  .info-note {
+    margin-top: 14px; padding: 12px 14px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-md); font-size: 12px; color: var(--text-secondary);
+    display: flex; align-items: flex-start; gap: 8px;
+  }
+  .info-note i { margin-top: 1px; flex-shrink: 0; color: var(--text-tertiary); }
+
+  /* ---------- Season progress ---------- */
+  .progress-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 12px 14px;
+    margin-bottom: 16px;
+  }
+  .progress-card .top-line {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 8px;
+  }
+  .progress-card .label {
+    font-family: var(--font-display);
+    font-size: 13px; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .progress-card .remaining { font-size: 12px; color: var(--text-secondary); }
+  .progress-bar-track {
+    background: var(--surface-2); border-radius: var(--radius-md);
+    height: 8px; overflow: hidden;
+  }
+  .progress-bar-fill { height: 100%; background: var(--accent); border-radius: var(--radius-md); }
+
+  /* ---------- Race-by-race breakdown ---------- */
+  .race-list { display: flex; flex-direction: column; gap: 8px; }
+  .race-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .race-summary {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 14px; cursor: pointer;
+  }
+  .race-summary .race-name {
+    font-family: var(--font-display);
+    font-size: 15px; font-weight: 600;
+    text-transform: uppercase;
+  }
+  .race-summary .race-num { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; }
+  .race-summary .chev {
+    color: var(--text-tertiary); font-size: 18px;
+    transition: transform 0.15s;
+  }
+  .race-item.open .chev { transform: rotate(90deg); }
+  .race-detail {
+    display: none;
+    border-top: 1px solid var(--border);
+  }
+  .race-item.open .race-detail { display: block; }
+  .race-detail table { font-size: 12px; }
+  .race-detail th, .race-detail td { padding: 8px 10px; }
+
+  /* ---------- Driver ownership heatmap ---------- */
+  #ownership-table { table-layout: auto; }
+  #ownership-table th, #ownership-table td {
+    text-align: center; padding: 6px 4px;
+    font-size: 11px; white-space: nowrap;
+  }
+  #ownership-table th:first-child, #ownership-table td:first-child {
+    text-align: left; padding-left: 10px;
+    position: sticky; left: 0;
+    background: var(--surface-2);
+    font-weight: 600; font-size: 12px;
+  }
+  #ownership-table thead th:first-child { background: var(--surface-2); }
+  #ownership-wrap { overflow-x: auto; }
+  .heat-cell {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 22px; border-radius: 4px;
+    font-family: var(--font-display); font-weight: 500;
+  }
+
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="top-row">
+      <div class="brand">
+        <div class="flag">P1</div>
+        <div>
+          <h1>Race control</h1>
+          <div class="sub">Fantasy NASCAR &middot; 2026</div>
+        </div>
+      </div>
+      <button id="refresh-btn" aria-label="Refresh data"><i class="ti ti-refresh" aria-hidden="true"></i></button>
+    </div>
+    <div id="status">Loading live data...</div>
+    <nav class="tabs">
+      <button class="tab-btn active" data-view="standings">Standings</button>
+      <button class="tab-btn" data-view="races">Races</button>
+      <button class="tab-btn" data-view="stats">Stats</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- STANDINGS PAGE -->
+    <section class="view active" id="view-standings">
+      <div class="progress-card" id="season-progress"></div>
+
+      <p class="section-label">Season standings</p>
+      <div class="row-list" id="standings-list"></div>
+
+      <p class="section-label">Momentum</p>
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>Player</th>
+              <th class="num sortable" data-sort="momentum">Momentum <span class="arrow">&#9660;</span></th>
+            </tr>
+          </thead>
+          <tbody id="momentum-body"></tbody>
+        </table>
+      </div>
+
+      <p class="section-label">Points by week</p>
+      <div class="chart-card">
+        <div class="chart-wrap"><canvas id="trend-chart"></canvas></div>
+        <div class="legend-row" id="trend-legend"></div>
+      </div>
+
+      <p class="section-label">Point differential by week</p>
+      <div class="chart-card">
+        <div class="chart-wrap"><canvas id="diff-chart"></canvas></div>
+        <div class="legend-row" id="diff-legend"></div>
+      </div>
+    </section>
+
+    <!-- RACES PAGE -->
+    <section class="view" id="view-races">
+      <p class="section-label">Race-by-race breakdown</p>
+      <div class="race-list" id="race-list"></div>
+
+      <p class="section-label">Driver ownership</p>
+      <div class="table-card" id="ownership-wrap">
+        <table id="ownership-table">
+          <thead><tr id="ownership-head"></tr></thead>
+          <tbody id="ownership-body"></tbody>
+        </table>
+      </div>
+      <div class="info-note"><i class="ti ti-info-circle"></i>Darker cells mean a player drafted that driver more often this season.</div>
+    </section>
+
+    <!-- STATS PAGE -->
+    <section class="view" id="view-stats">
+      <p class="section-label">Most picked drivers</p>
+      <div class="table-card">
+        <table>
+          <thead><tr><th>Driver</th><th class="num">Times picked</th></tr></thead>
+          <tbody id="most-picked-body"></tbody>
+        </table>
+      </div>
+
+      <p class="section-label">Most picked by player</p>
+      <div class="picks-grid" id="picks-grid"></div>
+
+      <p class="section-label">Driver value</p>
+      <div id="driver-value"></div>
+
+      <p class="section-label">Driver diversity</p>
+      <div class="table-card">
+        <table>
+          <thead><tr><th>Player</th><th class="num">Unique drivers</th></tr></thead>
+          <tbody id="diversity-body"></tbody>
+        </table>
+      </div>
+
+      <p class="section-label">Consistency</p>
+      <div class="table-card">
+        <table>
+          <thead><tr><th>Player</th><th class="num">Avg pts</th><th class="num">Std dev</th><th class="num">Score</th></tr></thead>
+          <tbody id="consistency-body"></tbody>
+        </table>
+      </div>
+
+      <p class="section-label">Stage points</p>
+      <div class="table-card">
+        <table>
+          <thead><tr><th>Player</th><th class="num">Total</th><th class="num">Stage</th><th class="num">Stage %</th></tr></thead>
+          <tbody id="points-body"></tbody>
+        </table>
+      </div>
+
+      <div class="info-note"><i class="ti ti-info-circle"></i>Live from your Google Sheet. Tap refresh after updating it.</div>
+    </section>
+  </main>
+</div>
+
+<script>
+/* ================= CONFIG ================= */
+const URLS = {
+  data: "https://docs.google.com/spreadsheets/d/e/2PACX-1vR87iiA9C9saGmQDdOYukR9hZnsgu-Tx7nb4rJ3qg0SNJAyqbJrHdfTwZbPd_G6Dmi6C0Rr2ZkSqhFM/pub?gid=1241423050&single=true&output=csv",
+  dashboarddata: "https://docs.google.com/spreadsheets/d/e/2PACX-1vR87iiA9C9saGmQDdOYukR9hZnsgu-Tx7nb4rJ3qg0SNJAyqbJrHdfTwZbPd_G6Dmi6C0Rr2ZkSqhFM/pub?gid=1907197552&single=true&output=csv",
+  drivers: "https://docs.google.com/spreadsheets/d/e/2PACX-1vR87iiA9C9saGmQDdOYukR9hZnsgu-Tx7nb4rJ3qg0SNJAyqbJrHdfTwZbPd_G6Dmi6C0Rr2ZkSqhFM/pub?gid=1197252648&single=true&output=csv"
+};
+
+const PLAYER_NAMES = ["Will","Bo","Doug","Zp","Barth Jr","Barth Sr"];
+
+const SEASON_TOTAL_RACES = 36;
+
+const PLAYER_COLORS = {
+  "Will":     "#e8332c",
+  "Bo":       "#f4b13c",
+  "Doug":     "#3a9d6e",
+  "Zp":       "#5b9bd5",
+  "Barth Jr": "#a47ee0",
+  "Barth Sr": "#e07ec0"
+};
+
+/* ================= STATE ================= */
+let state = {
+  players: [],
+  drivers: [],
+  trend: { tracks: [], series: {} },
+  mostPickedByPlayer: {}, // { playerName: { driver, count } }
+  races: [],              // [{ track, picks: [{name, driver, pts, stage}] }]
+  ownership: {}           // { driver: { Will: n, Bo: n, ... } }
+};
+
+let trendChartRef = { chart: null };
+let diffChartRef = { chart: null };
+let hiddenPlayers = new Set();
+let hiddenDiffPlayers = new Set();
+let momentumSortDesc = true;
+
+/* ================= HELPERS ================= */
+function bust(url){ const sep = url.includes("?") ? "&" : "?"; return url + sep + "cb=" + Date.now(); }
+
+// Returns array-of-objects (header:true) parsing
+function fetchCSV(url){
+  return fetch(bust(url), { cache: "no-store" }).then(r => {
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    return r.text();
+  }).then(text => Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true }).data);
+}
+
+// Returns array-of-arrays (raw rows, no header interpretation) - used for the
+// "data" sheet, which has multi-row/merged headers that break header:true parsing.
+function fetchCSVRaw(url){
+  return fetch(bust(url), { cache: "no-store" }).then(r => {
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    return r.text();
+  }).then(text => Papa.parse(text, { header: false, skipEmptyLines: false, dynamicTyping: true }).data);
+}
+
+// Find a value in an object by trying several possible key spellings
+function pick(obj, ...keys){
+  for(const k of keys){
+    if(obj[k] !== undefined && obj[k] !== null && obj[k] !== "") return obj[k];
+  }
+  return undefined;
+}
+
+function round1(n){ return Math.round((Number(n) || 0) * 10) / 10; }
+function round2(n){ return Math.round((Number(n) || 0) * 100) / 100; }
+function pct1(n){
+  let v = Number(n);
+  if(isNaN(v)) return "0.0";
+  if(v <= 1) v = v * 100;
+  return v.toFixed(1);
+}
+
+/* ================= DATA LOAD ================= */
+async function loadAll(){
+  const statusEl = document.getElementById('status');
+  const refreshBtn = document.getElementById('refresh-btn');
+  statusEl.className = "";
+  statusEl.innerHTML = '<i class="ti ti-loader-2"></i> Loading live data...';
+  refreshBtn.classList.add('spinning');
+
+  try {
+    const [dashRows, dataRowsRaw, driverRows] = await Promise.all([
+      fetchCSV(URLS.dashboarddata),
+      fetchCSVRaw(URLS.data),
+      fetchCSV(URLS.drivers)
+    ]);
+
+    state.players = dashRows.filter(r => r.Player).map(r => ({
+      name: r.Player,
+      pts: Number(pick(r, "Total Points")) || 0,
+      diff: Number(pick(r, "Current Points Differencial", "Current Points Differential", "Current Points Diff")) || 0,
+      momentum: Number(pick(r, "Momentum")) || 0,
+      wins: Number(pick(r, "Wins")) || 0,
+      losses: Number(pick(r, "Losses")) || 0,
+      winPct: Number(pick(r, "Win %", "Win%", "Win Percent")) || 0,
+      avg: Number(pick(r, "Ave", "Avg", "Average")) || 0,
+      std: Number(pick(r, "Std Dev", "Standard Dev", "StdDev")) || 0,
+      fav: pick(r, "Favorite Driver", "Favourite Driver") || "—",
+      favCount: Number(pick(r, "Favorite Driver Count", "Favourite Driver Count")) || 0,
+      diversity: Number(pick(r, "Diversity")) || 0,
+      stagePts: Number(pick(r, "Stage Points")) || 0,
+      stagePct: Number(pick(r, "Stage %", "Stage%", "Stage Percent")) || 0
+    })).sort((a,b) => b.pts - a.pts);
+
+    state.drivers = driverRows.filter(r => r.Driver).map(r => ({
+      name: r.Driver,
+      picked: Number(r["Times Picked"]) || 0,
+      total: Number(r["Total Points"]) || 0,
+      avg: Number(r["Avg Points"]) || 0
+    })).sort((a,b) => b.total - a.total);
+
+    // ---- Parse the "data" sheet using raw positional rows ----
+    // Sheet layout (0-indexed columns):
+    //  col 1            = TRACKS
+    //  cols 2-7         = Running Total (Will, Bo, Doug, Zp, Barth Jr, Barth Sr)
+    //  cols 9-14        = Running Point Difference
+    //  cols 16-21       = Picks
+    //  cols 23-28       = Point By Race
+    //  cols 30-35       = Stage Points By Race
+    const RUNNING_START = 2;
+    const DIFF_START = 9;
+    const PICKS_START = 16;
+    const PTS_BY_RACE_START = 23;
+    const STAGE_BY_RACE_START = 30;
+
+    // Find the header row (the row containing "TRACKS" in column 1)
+    let headerRowIdx = dataRowsRaw.findIndex(row => row && String(row[1]).trim().toUpperCase() === "TRACKS");
+    const trackRowsRaw = headerRowIdx >= 0
+      ? dataRowsRaw.slice(headerRowIdx + 1).filter(row => row && row[1] && String(row[1]).trim().length > 0)
+      : [];
+
+    const tracks = [];
+    const series = {};
+    const diffSeries = {};
+    PLAYER_NAMES.forEach(p => { series[p] = []; diffSeries[p] = []; });
+
+    const pickCounts = {};
+    PLAYER_NAMES.forEach(p => pickCounts[p] = {});
+
+    const races = []; // [{ track, picks: [{name, driver, pts, stage}] }]
+    const ownership = {}; // { driver: { Will: n, Bo: n, ... } }
+
+    trackRowsRaw.forEach(row => {
+      const trackName = String(row[1]).trim();
+      tracks.push(trackName);
+      const picks = [];
+
+      PLAYER_NAMES.forEach((p, i) => {
+        const v = Number(row[RUNNING_START + i]);
+        series[p].push(isNaN(v) ? null : v);
+
+        const dv = Number(row[DIFF_START + i]);
+        diffSeries[p].push(isNaN(dv) ? null : dv);
+
+        const driver = row[PICKS_START + i];
+        const driverName = (driver !== undefined && driver !== null) ? String(driver).trim() : "";
+        if(driverName.length > 0){
+          pickCounts[p][driverName] = (pickCounts[p][driverName] || 0) + 1;
+          if(!ownership[driverName]) ownership[driverName] = {};
+          ownership[driverName][p] = (ownership[driverName][p] || 0) + 1;
+        }
+
+        const racePts = Number(row[PTS_BY_RACE_START + i]);
+        const stagePts = Number(row[STAGE_BY_RACE_START + i]);
+        picks.push({
+          name: p,
+          driver: driverName,
+          pts: isNaN(racePts) ? 0 : racePts,
+          stage: isNaN(stagePts) ? 0 : stagePts
+        });
+      });
+
+      races.push({ track: trackName, picks });
+    });
+    state.trend = { tracks, series, diffSeries };
+    state.races = races;
+    state.ownership = ownership;
+
+    state.mostPickedByPlayer = {};
+    PLAYER_NAMES.forEach(p => {
+      const entries = Object.entries(pickCounts[p]);
+      if(entries.length){
+        entries.sort((a,b) => b[1] - a[1]);
+        state.mostPickedByPlayer[p] = { driver: entries[0][0], count: entries[0][1] };
+      } else {
+        state.mostPickedByPlayer[p] = { driver: "—", count: 0 };
+      }
+    });
+
+    renderStandings();
+    renderSeasonProgress();
+    renderMomentumTable();
+    renderTrendChart();
+    renderDiffChart();
+    renderRaces();
+    renderOwnership();
+    renderStatsPage();
+
+    const now = new Date();
+    statusEl.className = "ok";
+    statusEl.innerHTML = `<i class="ti ti-circle-check"></i> Updated ${now.toLocaleDateString()} ${now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+  } catch (err) {
+    statusEl.className = "error";
+    statusEl.innerHTML = `<i class="ti ti-alert-circle"></i> Could not load live data (${err.message})`;
+  } finally {
+    refreshBtn.classList.remove('spinning');
+  }
+}
+
+/* ================= RENDER: STANDINGS ================= */
+function renderStandings(){
+  const el = document.getElementById('standings-list');
+  if(!state.players.length){
+    el.innerHTML = '<div class="empty">No standings data found.</div>';
+    return;
+  }
+  const rankClasses = ["gold","silver","bronze"];
+  const lastRace = state.races.length ? state.races[state.races.length - 1] : null;
+  el.innerHTML = state.players.map((p, i) => {
+    const rankClass = i < 3 ? rankClasses[i] : "plain";
+    const diffStr = p.diff === 0 ? "Leader" : (p.diff > 0 ? "+" : "") + p.diff + " pts";
+    let lastPts = null;
+    if(lastRace){
+      const pick = lastRace.picks.find(x => x.name === p.name);
+      if(pick) lastPts = pick.pts;
+    }
+    const lastStr = lastPts === null ? "—" : `+${lastPts}`;
+    return `
+    <div class="card">
+      <div class="rank ${rankClass}">${i+1}</div>
+      <div class="info">
+        <div class="name">${p.name}</div>
+        <div class="meta">${diffStr}</div>
+      </div>
+      <div class="stat">
+        <div class="pts">${p.pts}</div>
+        <div class="momentum"><span class="last-race-pts">${lastStr} last race</span></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ================= RENDER: SEASON PROGRESS ================= */
+function renderSeasonProgress(){
+  const el = document.getElementById('season-progress');
+  const completed = state.trend.tracks.length;
+  const total = SEASON_TOTAL_RACES;
+  const remaining = Math.max(total - completed, 0);
+  const pct = total > 0 ? Math.min(completed / total * 100, 100) : 0;
+  const lastTrack = completed > 0 ? state.trend.tracks[completed - 1] : "—";
+
+  el.innerHTML = `
+    <div class="top-line">
+      <span class="label">Race ${completed} of ${total}</span>
+      <span class="remaining">${remaining} race${remaining === 1 ? '' : 's'} remaining</span>
+    </div>
+    <div class="progress-bar-track"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+  `;
+}
+
+/* ================= RENDER: RACE-BY-RACE BREAKDOWN ================= */
+function renderRaces(){
+  const el = document.getElementById('race-list');
+  if(!state.races.length){
+    el.innerHTML = '<div class="empty">No race data found.</div>';
+    return;
+  }
+  // Most recent race first
+  const races = state.races.slice().reverse();
+  el.innerHTML = races.map((race, idx) => {
+    const raceNum = state.races.length - idx;
+    const rows = race.picks.slice().sort((a,b) => b.pts - a.pts).map(p => `
+      <tr>
+        <td class="name-cell">${p.name}</td>
+        <td>${p.driver || "—"}</td>
+        <td class="num">${p.pts}</td>
+        <td class="num">${p.stage > 0 ? '+' + p.stage : '—'}</td>
+      </tr>`).join('');
+    return `
+    <div class="race-item" data-idx="${idx}">
+      <div class="race-summary">
+        <div>
+          <div class="race-name">${race.track}</div>
+          <div class="race-num">Race ${raceNum} of season</div>
+        </div>
+        <i class="ti ti-chevron-right chev" aria-hidden="true"></i>
+      </div>
+      <div class="race-detail">
+        <table>
+          <thead><tr><th>Player</th><th>Driver</th><th class="num">Points</th><th class="num">Stage</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.querySelectorAll('.race-item').forEach(item => {
+    item.querySelector('.race-summary').addEventListener('click', () => {
+      item.classList.toggle('open');
+    });
+  });
+}
+
+/* ================= RENDER: DRIVER OWNERSHIP MAP ================= */
+function renderOwnership(){
+  const head = document.getElementById('ownership-head');
+  const body = document.getElementById('ownership-body');
+
+  const drivers = Object.keys(state.ownership);
+  if(!drivers.length){
+    head.innerHTML = '';
+    body.innerHTML = '<tr><td class="empty">No pick data found.</td></tr>';
+    return;
+  }
+
+  // Sort drivers by total picks across all players, descending
+  const driversSorted = drivers.slice().sort((a,b) => {
+    const totalA = Object.values(state.ownership[a]).reduce((s,v) => s+v, 0);
+    const totalB = Object.values(state.ownership[b]).reduce((s,v) => s+v, 0);
+    return totalB - totalA;
+  });
+
+  head.innerHTML = '<th>Driver</th>' + PLAYER_NAMES.map(p => `<th>${p}</th>`).join('');
+
+  // Find max count for color scaling
+  let max = 1;
+  driversSorted.forEach(d => {
+    PLAYER_NAMES.forEach(p => {
+      const v = state.ownership[d][p] || 0;
+      if(v > max) max = v;
+    });
+  });
+
+  body.innerHTML = driversSorted.map(d => {
+    const cells = PLAYER_NAMES.map(p => {
+      const v = state.ownership[d][p] || 0;
+      if(v === 0) return `<td><span class="heat-cell" style="background:var(--surface-2);color:var(--text-tertiary);">–</span></td>`;
+      const intensity = v / max; // 0..1
+      const bg = `rgba(232, 51, 44, ${0.15 + intensity * 0.65})`;
+      const textColor = intensity > 0.5 ? '#fff' : 'var(--text)';
+      return `<td><span class="heat-cell" style="background:${bg};color:${textColor};">${v}</span></td>`;
+    }).join('');
+    return `<tr><td>${d}</td>${cells}</tr>`;
+  }).join('');
+}
+
+
+function renderMomentumTable(){
+  const tbody = document.getElementById('momentum-body');
+  const sorted = state.players.slice().sort((a,b) =>
+    momentumSortDesc ? b.momentum - a.momentum : a.momentum - b.momentum
+  );
+  tbody.innerHTML = sorted.map(p => {
+    const cls = p.momentum >= 0 ? 'pos' : 'neg';
+    return `
+    <tr>
+      <td class="name-cell">${p.name}</td>
+      <td class="num ${cls}">${p.momentum >= 0 ? '+' : ''}${round1(p.momentum)}</td>
+    </tr>`;
+  }).join('');
+}
+
+document.querySelector('[data-sort="momentum"]').addEventListener('click', () => {
+  momentumSortDesc = !momentumSortDesc;
+  document.querySelector('[data-sort="momentum"] .arrow').innerHTML = momentumSortDesc ? '&#9660;' : '&#9650;';
+  renderMomentumTable();
+});
+
+/* ================= RENDER: TRENDS ================= */
+function renderLineChart(chartRef, canvasId, legendId, seriesObj, hiddenSet, onToggle){
+  const ctx = document.getElementById(canvasId);
+  const datasets = PLAYER_NAMES.map(name => ({
+    label: name,
+    data: seriesObj[name] || [],
+    borderColor: PLAYER_COLORS[name],
+    backgroundColor: PLAYER_COLORS[name],
+    borderWidth: 2,
+    pointRadius: 0,
+    pointHoverRadius: 4,
+    tension: 0.25,
+    hidden: hiddenSet.has(name)
+  }));
+
+  const config = {
+    type: 'line',
+    data: { labels: state.trend.tracks, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: {
+        backgroundColor: '#1d2025', borderColor: '#2a2e35', borderWidth: 1,
+        titleColor: '#eceef0', bodyColor: '#eceef0', padding: 10,
+        titleFont: { family: 'Inter', size: 11 }, bodyFont: { family: 'Inter', size: 11 }
+      }},
+      scales: {
+        x: { grid: { color: '#2a2e35' }, ticks: { color: '#8d94a0', font: { family: 'Inter', size: 10 }, maxRotation: 0, autoSkip: true } },
+        y: { grid: { color: '#2a2e35' }, ticks: { color: '#8d94a0', font: { family: 'Inter', size: 10 } } }
+      }
+    }
+  };
+
+  if(chartRef.chart){ chartRef.chart.data = config.data; chartRef.chart.update(); }
+  else { chartRef.chart = new Chart(ctx, config); }
+
+  const legend = document.getElementById(legendId);
+  legend.innerHTML = PLAYER_NAMES.map(name => `
+    <span class="legend-item ${hiddenSet.has(name) ? 'muted' : ''}" data-player="${name}">
+      <span class="legend-dot" style="background:${PLAYER_COLORS[name]}"></span>${name}
+    </span>`).join('');
+
+  legend.querySelectorAll('.legend-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const name = item.dataset.player;
+      if(hiddenSet.has(name)) hiddenSet.delete(name); else hiddenSet.add(name);
+      onToggle();
+    });
+  });
+}
+
+function renderTrendChart(){
+  renderLineChart(trendChartRef, 'trend-chart', 'trend-legend', state.trend.series, hiddenPlayers, renderTrendChart);
+}
+
+function renderDiffChart(){
+  renderLineChart(diffChartRef, 'diff-chart', 'diff-legend', state.trend.diffSeries, hiddenDiffPlayers, renderDiffChart);
+}
+
+
+/* ================= RENDER: STATS PAGE ================= */
+function renderStatsPage(){
+  // Most picked drivers (overall)
+  const mostPickedBody = document.getElementById('most-picked-body');
+  const sortedDrivers = state.drivers.slice().sort((a,b) => b.picked - a.picked);
+  mostPickedBody.innerHTML = sortedDrivers.length
+    ? sortedDrivers.map(d => `<tr><td class="name-cell">${d.name}</td><td class="num">${d.picked}</td></tr>`).join('')
+    : '<tr><td colspan="2" class="empty">No driver data found.</td></tr>';
+
+  // Most picked by player
+  const picksGrid = document.getElementById('picks-grid');
+  picksGrid.innerHTML = PLAYER_NAMES.map(name => {
+    const mp = state.mostPickedByPlayer[name] || { driver: "—", count: 0 };
+    return `
+    <div class="pick-tile">
+      <div class="player-name">${name}</div>
+      <div class="driver-name">${mp.driver}</div>
+      <div class="count">${mp.count}x picked</div>
+    </div>`;
+  }).join('');
+
+  // Driver value (bars by avg points, with total)
+  const driverValueEl = document.getElementById('driver-value');
+  if(!state.drivers.length){
+    driverValueEl.innerHTML = '<div class="empty">No driver data found.</div>';
+  } else {
+    const sorted = state.drivers.slice().sort((a,b) => b.avg - a.avg);
+    const max = Math.max(...sorted.map(d => d.avg));
+    driverValueEl.innerHTML = sorted.map(d => {
+      const pct = max > 0 ? (d.avg / max * 100) : 0;
+      return `
+      <div class="bar-row">
+        <div class="label-row">
+          <span class="name">${d.name}</span>
+          <span class="meta">avg ${round1(d.avg)} &middot; ${d.total} pts &middot; picked ${d.picked}x</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+      </div>`;
+    }).join('');
+  }
+
+  // Driver diversity
+  const diversitySorted = state.players.slice().sort((a,b) => b.diversity - a.diversity);
+  document.getElementById('diversity-body').innerHTML = diversitySorted.map(p =>
+    `<tr><td class="name-cell">${p.name}</td><td class="num">${p.diversity}</td></tr>`
+  ).join('');
+
+  // Win/loss
+  // Consistency (score = avg / std dev, higher = more consistent relative to output)
+  const consistencySorted = state.players.slice().map(p => ({
+    ...p,
+    score: p.std > 0 ? p.avg / p.std : 0
+  })).sort((a,b) => b.score - a.score);
+  document.getElementById('consistency-body').innerHTML = consistencySorted.map(p => `
+    <tr>
+      <td class="name-cell">${p.name}</td>
+      <td class="num">${round2(p.avg)}</td>
+      <td class="num">${round2(p.std)}</td>
+      <td class="num amber-text">${round2(p.score)}</td>
+    </tr>`).join('');
+
+  // Stage points (stage % = stage points / total points * 100)
+  const pointsSorted = state.players.slice().sort((a,b) => b.pts - a.pts);
+  document.getElementById('points-body').innerHTML = pointsSorted.map(p => {
+    const stagePct = p.pts > 0 ? (p.stagePts / p.pts * 100) : 0;
+    return `
+    <tr>
+      <td class="name-cell">${p.name}</td>
+      <td class="num">${p.pts}</td>
+      <td class="num">${p.stagePts}</td>
+      <td class="num">${round1(stagePct)}%</td>
+    </tr>`;
+  }).join('');
+}
+
+/* ================= NAVIGATION ================= */
+function switchView(viewName){
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + viewName).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.view === viewName));
+  window.scrollTo({ top: 0, behavior: 'instant' });
+  if(viewName === 'standings'){
+    if(trendChartRef.chart) trendChartRef.chart.resize();
+    if(diffChartRef.chart) diffChartRef.chart.resize();
+  }
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchView(btn.dataset.view));
+});
+
+document.getElementById('refresh-btn').addEventListener('click', loadAll);
+
+/* ================= INIT ================= */
+loadAll();
+setInterval(loadAll, 5 * 60 * 1000);
+</script>
+</body>
+</html>
