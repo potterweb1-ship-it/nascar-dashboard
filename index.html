@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fantasy NASCAR Dashboard</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.44.0/iconfont/tabler-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root {
+    --bg: #0d0f12;
+    --surface: #16191e;
+    --surface-2: #1e2228;
+    --border: #2a2f37;
+    --text: #f2f3f5;
+    --text-secondary: #9aa1ad;
+    --accent: #e0312f;       /* NASCAR red */
+    --accent-2: #f4b223;     /* checkered gold */
+    --success: #3fb27f;
+    --danger: #e0312f;
+    --radius-md: 8px;
+    --radius-lg: 14px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .app {
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    padding: 0 0 2rem;
+  }
+
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: linear-gradient(135deg, #1a1d22 0%, #0d0f12 100%);
+    border-bottom: 2px solid var(--accent);
+    padding: 1rem 1rem 0.75rem;
+  }
+
+  header .title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  header .title-row .left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  header .left i {
+    font-size: 24px;
+    color: var(--accent-2);
+  }
+
+  header h1 {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  #refresh-btn {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-secondary);
+    border-radius: var(--radius-md);
+    padding: 6px 10px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+
+  #refresh-btn:active { transform: scale(0.97); }
+
+  #refresh-btn.spinning i { animation: spin 0.8s linear infinite; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #status {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  #status.error { color: var(--danger); }
+  #status.ok i { color: var(--success); }
+
+  nav.tabs {
+    display: flex;
+    gap: 4px;
+    padding: 0.75rem 1rem 0;
+    background: var(--bg);
+  }
+
+  nav.tabs button {
+    flex: 1;
+    border: none;
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 0;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  nav.tabs button.active {
+    background: var(--surface-2);
+    color: var(--accent-2);
+    border-bottom: 2px solid var(--accent);
+  }
+
+  main {
+    padding: 0 1rem;
+  }
+
+  .panel {
+    background: var(--surface-2);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+    padding: 1rem;
+    border: 1px solid var(--border);
+    border-top: none;
+  }
+
+  .subtitle {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 0 0 0.75rem;
+  }
+
+  .row-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 0.75rem 1rem;
+  }
+
+  .rank, .avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+    color: #1a1d22;
+  }
+
+  .rank.gold { background: #f4b223; }
+  .rank.silver { background: #c8ccd2; }
+  .rank.bronze { background: #d8854a; }
+  .rank.plain { background: var(--border); color: var(--text); }
+
+  .avatar { background: var(--accent); color: white; }
+
+  .card .info { flex: 1; min-width: 0; }
+
+  .card .name { font-size: 15px; font-weight: 600; }
+
+  .card .meta { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+
+  .card .stat { text-align: right; flex-shrink: 0; }
+
+  .card .stat .pts { font-size: 17px; font-weight: 700; }
+
+  .card .stat .momentum {
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    justify-content: flex-end;
+    margin-top: 2px;
+  }
+
+  .momentum.up { color: var(--success); }
+  .momentum.down { color: var(--danger); }
+
+  .bar-row { margin-bottom: 10px; }
+
+  .bar-row .label-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    margin-bottom: 4px;
+  }
+
+  .bar-row .label-row .name { font-weight: 600; }
+
+  .bar-row .label-row .meta { color: var(--text-secondary); font-size: 11px; }
+
+  .bar-track {
+    background: var(--surface);
+    border-radius: var(--radius-md);
+    height: 8px;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: var(--radius-md);
+  }
+
+  .info-note {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border-radius: var(--radius-md);
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .info-note i { margin-top: 1px; flex-shrink: 0; }
+
+  .empty {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 13px;
+    padding: 2rem 0;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="title-row">
+      <div class="left">
+        <i class="ti ti-flag-2" aria-hidden="true"></i>
+        <h1>Fantasy standings</h1>
+      </div>
+      <button id="refresh-btn"><i class="ti ti-refresh" aria-hidden="true"></i>Refresh</button>
+    </div>
+    <div id="status">Loading live data...</div>
+  </header>
+
+  <nav class="tabs">
+    <button id="tab-standings" class="active">Standings</button>
+    <button id="tab-week">This week</button>
+    <button id="tab-drivers">Drivers</button>
+  </nav>
+
+  <main>
+    <div class="panel" id="panel-standings"></div>
+    <div class="panel" id="panel-week" style="display:none;"></div>
+    <div class="panel" id="panel-drivers" style="display:none;"></div>
+  </main>
+</div>
+
+<script>
+// ---- Configure your published CSV links here ----
+const URLS = {
+  data: "https://docs.google.com/spreadsheets/d/e/2PACX-1vR87iiA9C9saGmQDdOYukR9hZnsgu-Tx7nb4rJ3qg0SNJAyqbJrHdfTwZbPd_G6Dmi6C0Rr2ZkSqhFM/pub?gid=1241423050&single=true&output=csv",
+  dashboarddata: "https://docs.google.com/spreadsheets/d/e/2PACX-1vR87iiA9C9saGmQDdOYukR9hZnsgu-Tx7nb4rJ3qg0SNJAyqbJrHdfTwZbPd_G6Dmi6C0Rr2ZkSqhFM/pub?gid=1907197552&single=true&output=csv",
+  drivers: "https://docs.google.com/spreadsheets/d/e/2PACX-1vR87iiA9C9saGmQDdOYukR9hZnsgu-Tx7nb4rJ3qg0SNJAyqbJrHdfTwZbPd_G6Dmi6C0Rr2ZkSqhFM/pub?gid=1197252648&single=true&output=csv"
+};
+
+const PLAYER_NAMES = ["Will","Bo","Doug","Zp","Barth Jr","Barth Sr"];
+
+function initials(n){ return n.split(" ").map(w=>w[0]).join("").toUpperCase(); }
+
+// Cache-bust the published CSV so edits show up immediately
+function bust(url){
+  const sep = url.includes("?") ? "&" : "?";
+  return url + sep + "cb=" + Date.now();
+}
+
+function fetchCSV(url){
+  return fetch(bust(url), { cache: "no-store" }).then(r => {
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    return r.text();
+  }).then(text => {
+    const parsed = Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true });
+    return parsed.data;
+  });
+}
+
+function renderStandings(players){
+  const panel = document.getElementById('panel-standings');
+  if(!players.length){
+    panel.innerHTML = '<div class="empty">No standings data found.</div>';
+    return;
+  }
+  const rankClasses = ["gold","silver","bronze"];
+  let html = '<div class="row-list">';
+  players.forEach((p, i) => {
+    const rankClass = i < 3 ? rankClasses[i] : "plain";
+    const diffStr = p.diff === 0 ? "Leader" : (p.diff > 0 ? "+" : "") + p.diff + " pts";
+    const momentumNum = Number(p.momentum) || 0;
+    const momIcon = momentumNum >= 0 ? "ti-trending-up" : "ti-trending-down";
+    const momClass = momentumNum >= 0 ? "up" : "down";
+    html += `
+    <div class="card">
+      <div class="rank ${rankClass}">${i+1}</div>
+      <div class="info">
+        <div class="name">${p.name}</div>
+        <div class="meta">${diffStr}</div>
+      </div>
+      <div class="stat">
+        <div class="pts">${p.pts}</div>
+        <div class="momentum ${momClass}"><i class="ti ${momIcon}" aria-hidden="true"></i>${Math.abs(momentumNum).toFixed(1)}</div>
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+  html += `<div class="info-note"><i class="ti ti-info-circle"></i>Live from your Google Sheet. Edit the sheet, then tap refresh to update.</div>`;
+  panel.innerHTML = html;
+}
+
+function renderWeek(track, picks){
+  const panel = document.getElementById('panel-week');
+  if(!picks.length){
+    panel.innerHTML = '<div class="empty">No race data found.</div>';
+    return;
+  }
+  let html = `<div class="subtitle">${track} results</div>`;
+  html += '<div class="row-list">';
+  picks.slice().sort((a,b) => b.pts - a.pts).forEach(p => {
+    html += `
+    <div class="card">
+      <div class="avatar">${initials(p.name)}</div>
+      <div class="info">
+        <div class="name">${p.name}</div>
+        <div class="meta">Picked ${p.driver}</div>
+      </div>
+      <div class="stat">
+        <div class="pts">${p.pts}</div>
+        ${p.stage > 0 ? `<div class="meta">+${p.stage} stage</div>` : ''}
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+  panel.innerHTML = html;
+}
+
+function renderDrivers(drivers){
+  const panel = document.getElementById('panel-drivers');
+  if(!drivers.length){
+    panel.innerHTML = '<div class="empty">No driver data found.</div>';
+    return;
+  }
+  const maxTotal = Math.max(...drivers.map(d => d.total));
+  let html = '<div class="subtitle">Total points scored by driver</div>';
+  drivers.forEach(d => {
+    const pct = maxTotal > 0 ? (d.total / maxTotal * 100) : 0;
+    html += `
+    <div class="bar-row">
+      <div class="label-row">
+        <span class="name">${d.name}</span>
+        <span class="meta">${d.total} pts &middot; picked ${d.picked}x &middot; avg ${Number(d.avg).toFixed(1)}</span>
+      </div>
+      <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+    </div>`;
+  });
+  panel.innerHTML = html;
+}
+
+async function loadAll(){
+  const statusEl = document.getElementById('status');
+  const refreshBtn = document.getElementById('refresh-btn');
+  statusEl.className = "";
+  statusEl.innerHTML = '<i class="ti ti-loader-2"></i> Loading live data...';
+  refreshBtn.classList.add('spinning');
+
+  try {
+    const [dashRows, dataRows, driverRows] = await Promise.all([
+      fetchCSV(URLS.dashboarddata),
+      fetchCSV(URLS.data),
+      fetchCSV(URLS.drivers)
+    ]);
+
+    const players = dashRows
+      .filter(r => r.Player)
+      .map(r => ({
+        name: r.Player,
+        pts: r["Total Points"],
+        diff: r["Current Points Differencial"] ?? r["Current Points Differential"] ?? 0,
+        momentum: r.Momentum
+      }))
+      .sort((a, b) => b.pts - a.pts);
+
+    const drivers = driverRows
+      .filter(r => r.Driver)
+      .map(r => ({
+        name: r.Driver,
+        picked: r["Times Picked"],
+        total: r["Total Points"],
+        avg: r["Avg Points"]
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    let track = "Latest race";
+    let picks = [];
+    if(dataRows.length){
+      const trackRows = dataRows.filter(r => r.TRACKS && String(r.TRACKS).trim().length > 0);
+      const lastRow = trackRows[trackRows.length - 1];
+      if(lastRow){
+        track = lastRow.TRACKS;
+        const keys = Object.keys(lastRow);
+        const picksStart = keys.indexOf("Picks");
+        const pointsStart = keys.indexOf("Point By Race");
+        const stageStart = keys.indexOf("Stage Points By Race");
+        PLAYER_NAMES.forEach((name, i) => {
+          const driver = picksStart >= 0 ? lastRow[keys[picksStart + 1 + i]] : "";
+          const pts = pointsStart >= 0 ? lastRow[keys[pointsStart + 1 + i]] : 0;
+          const stage = stageStart >= 0 ? lastRow[keys[stageStart + 1 + i]] : 0;
+          if(driver) picks.push({ name, driver, pts: pts || 0, stage: stage || 0 });
+        });
+      }
+    }
+
+    renderStandings(players);
+    renderWeek(track, picks);
+    renderDrivers(drivers);
+
+    const now = new Date();
+    statusEl.className = "ok";
+    statusEl.innerHTML = `<i class="ti ti-circle-check"></i> Updated ${now.toLocaleDateString()} ${now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+  } catch (err) {
+    statusEl.className = "error";
+    statusEl.innerHTML = `<i class="ti ti-alert-circle"></i> Could not load live data (${err.message})`;
+  } finally {
+    refreshBtn.classList.remove('spinning');
+  }
+}
+
+document.getElementById('refresh-btn').addEventListener('click', loadAll);
+
+// Tabs
+const tabs = {
+  standings: document.getElementById('tab-standings'),
+  week: document.getElementById('tab-week'),
+  drivers: document.getElementById('tab-drivers')
+};
+const panels = {
+  standings: document.getElementById('panel-standings'),
+  week: document.getElementById('panel-week'),
+  drivers: document.getElementById('panel-drivers')
+};
+
+function setTab(active){
+  Object.keys(tabs).forEach(key => {
+    const isActive = key === active;
+    tabs[key].classList.toggle('active', isActive);
+    panels[key].style.display = isActive ? 'block' : 'none';
+  });
+}
+
+tabs.standings.addEventListener('click', () => setTab('standings'));
+tabs.week.addEventListener('click', () => setTab('week'));
+tabs.drivers.addEventListener('click', () => setTab('drivers'));
+
+// Initial load + auto-refresh every 5 minutes while page is open
+loadAll();
+setInterval(loadAll, 5 * 60 * 1000);
+</script>
+</body>
+</html>
